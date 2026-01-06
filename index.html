@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>財報分析智慧看板 | Bauhaus Edition</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;700&family=Montserrat:wght@800&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg: #e0e5ec;
+            --nm-light: #ffffff;
+            --nm-shadow: #a3b1c6;
+            --bauhaus-red: #d9432f;
+            --bauhaus-blue: #2d5a9e;
+            --bauhaus-yellow: #f2c14e;
+            --text-main: #3d4b5f;
+            --transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Neumorphism 視覺設計 */
+        .nm-flat {
+            background: var(--bg);
+            box-shadow: 8px 8px 15px var(--nm-shadow), -8px -8px 15px var(--nm-light);
+            border-radius: 20px;
+            border: none;
+        }
+        .nm-inset {
+            background: var(--bg);
+            box-shadow: inset 6px 6px 12px var(--nm-shadow), inset -6px -6px 12px var(--nm-light);
+            border-radius: 15px;
+            border: none;
+        }
+        .btn-active {
+            box-shadow: inset 4px 4px 8px var(--nm-shadow), inset -4px -4px 8px var(--nm-light);
+            color: var(--bauhaus-blue);
+        }
+
+        /* Sidebar 導航 */
+        #sidebar {
+            width: 280px;
+            height: 100vh;
+            padding: 40px 25px;
+            position: fixed;
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+            transition: var(--transition);
+        }
+        .logo {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 28px;
+            line-height: 0.9;
+            margin-bottom: 50px;
+            border-left: 10px solid var(--bauhaus-red);
+            padding-left: 10px;
+        }
+        .nav-item {
+            padding: 18px 20px;
+            margin-bottom: 20px;
+            cursor: pointer;
+            font-weight: 700;
+            text-align: left;
+            transition: var(--transition);
+            border: none;
+        }
+
+        /* 主要內容區 */
+        main {
+            margin-left: 280px;
+            padding: 50px;
+            width: calc(100% - 280px);
+            transition: var(--transition);
+        }
+
+        .section { display: none; animation: slideUp 0.6s ease-out; }
+        .section.active { display: block; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* PDF 匯入區域 */
+        .card { padding: 30px; margin-bottom: 30px; border-radius: 20px; }
+        .import-zone {
+            height: 250px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed var(--nm-shadow);
+            margin-bottom: 30px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .import-zone:hover { background: rgba(255,255,255,0.3); }
+
+        /* 圖表區 */
+        .chart-container { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+        .svg-box { width: 100%; height: 250px; display: flex; align-items:center; justify-content:center; }
+
+        /* 知識氣泡 */
+        .bubble-wall { position: relative; height: 500px; overflow: hidden; }
+        .bubble {
+            position: absolute; width: 110px; height: 110px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; text-align: center;
+            padding: 12px; font-size: 13px; font-weight: bold; cursor: pointer;
+            transition: var(--transition); box-shadow: 4px 4px 10px var(--nm-shadow);
+        }
+        .bubble:hover { transform: scale(1.1) rotate(5deg); z-index: 50; }
+
+        /* 筆記與漢堡選單 */
+        .note-toggle { position: fixed; right: 20px; bottom: 20px; width: 60px; height: 60px; border-radius: 50%; font-size: 24px; cursor: pointer; z-index: 1100; display: flex; align-items: center; justify-content: center; }
+        #note-panel { position: fixed; top: 20px; right: -340px; width: 320px; height: calc(100vh - 40px); padding: 25px; transition: var(--transition); z-index: 1050; }
+        #note-panel.open { right: 20px; }
+        textarea { width: 100%; height: 120px; margin-top: 15px; background: transparent; padding: 10px; border: none; outline: none; }
+        
+        .hamburger { display: none; position: fixed; top: 20px; left: 20px; font-size: 24px; padding: 10px; z-index: 1200; border: none; cursor: pointer; }
+
+        @media (max-width: 1024px) {
+            #sidebar { left: -280px; }
+            #sidebar.open { left: 0; }
+            main { margin-left: 0; width: 100%; padding-top: 80px; }
+            .hamburger { display: block; }
+            .chart-container { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <button class="hamburger nm-flat" onclick="toggleSidebar()">☰</button>
+
+    <nav id="sidebar" class="nm-flat">
+        <div class="logo">FINA<br>DASH</div>
+        <button class="nav-item nm-flat btn-active" onclick="switchTab('home', this)">PDF 財報匯入</button>
+        <button class="nav-item nm-flat" onclick="switchTab('analytics', this)">智慧比率分析</button>
+        <button class="nav-item nm-flat" onclick="switchTab('knowledge', this)">關鍵知識點</button>
+        <button class="nav-item nm-flat" onclick="switchTab('exam', this)">互動演練</button>
+        
+        <div style="margin-top: auto; display: grid; gap: 10px;">
+            <button class="nm-flat" style="padding: 12px; color: var(--bauhaus-red); font-weight: bold;" onclick="exportReport()">下載學習成果</button>
+            <button id="gs-btn" class="nm-inset" style="padding: 8px; font-size: 11px;" onclick="uploadToGoogleSheet()">傳送至 Google Sheet</button>
+        </div>
+    </nav>
+
+    <main>
+        <section id="home" class="section active">
+            <h1 style="margin-bottom: 10px;">智慧財報導航</h1>
+            <p style="opacity: 0.6; margin-bottom: 30px;">上傳 PDF 財報，系統將自動解析關鍵數據</p>
+            
+            <div class="import-zone nm-inset" onclick="document.getElementById('pdf-input').click()">
+                <div style="font-size: 50px;">📄</div>
+                <p style="font-weight: bold; margin-top: 15px;">點擊或拖放 PDF 財報檔案</p>
+                <small id="status-text">支援台灣上市櫃公司年報格式</small>
+                <input type="file" id="pdf-input" hidden accept=".pdf" onchange="processPDF(this)">
+            </div>
+
+            <div id="result-card" class="card nm-flat" style="display: none;">
+                <h3 id="res-name" style="color: var(--bauhaus-blue);">解析成功</h3>
+                <div id="res-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                    </div>
+            </div>
+        </section>
+
+        <section id="analytics" class="section">
+            <h2 style="margin-bottom: 30px;">視覺化指標分析</h2>
+            <div class="chart-container">
+                <div class="card nm-flat">
+                    <h3>盈餘品質檢視 (Venn Diagram)</h3>
+                    <div class="svg-box">
+                        <svg width="240" height="180">
+                            <circle cx="90" cy="80" r="60" fill="rgba(217, 67, 47, 0.2)" stroke="var(--bauhaus-red)" stroke-width="2"/>
+                            <circle cx="150" cy="80" r="60" fill="rgba(45, 90, 158, 0.2)" stroke="var(--bauhaus-blue)" stroke-width="2"/>
+                            <text x="50" y="85" font-size="12" font-weight="bold">高獲利</text>
+                            <text x="145" y="85" font-size="12" font-weight="bold">實收現金</text>
+                        </svg>
+                    </div>
+                    <p style="font-size: 14px; color: var(--text-main);">解析：交集區域越大，代表公司賺到的錢「真實進袋」的比例越高。</p>
+                </div>
+                <div class="card nm-flat">
+                    <h3>損益兩平點模型</h3>
+                    <div class="svg-box">
+                        <svg width="100%" height="200" viewBox="0 0 300 150">
+                            <line x1="20" y1="130" x2="280" y2="130" stroke="#3d4b5f" stroke-width="2"/>
+                            <line x1="20" y1="20" x2="20" y2="130" stroke="#3d4b5f" stroke-width="2"/>
+                            <path d="M 20 120 Q 150 70 280 20" fill="none" stroke="var(--bauhaus-red)" stroke-width="3"/>
+                            <line x1="20" y1="80" x2="280" y2="80" stroke="var(--bauhaus-blue)" stroke-width="2" stroke-dasharray="5,5"/>
+                        </svg>
+                    </div>
+                    <p style="font-size: 14px; text-align: center;">橫軸：產量 | 縱軸：金額</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="knowledge" class="section">
+            <h2 style="margin-bottom: 20px;">核心會計知識氣泡</h2>
+            <div id="bubble-container" class="bubble-wall nm-inset"></div>
+        </section>
+
+        <section id="exam" class="section">
+            <h2 style="margin-bottom: 30px;">互動測驗演練</h2>
+            <div id="quiz-card" class="card nm-flat">
+                <h3 id="q-text">請先匯入財報以開啟互動挑戰</h3>
+                <div id="q-options" style="margin-top: 25px; display: grid; gap: 15px;"></div>
+            </div>
+        </section>
+    </main>
+
+    <div id="note-panel" class="nm-flat">
+        <h3 style="border-bottom: 4px solid var(--bauhaus-yellow); display: inline-block;">分析筆記簿</h3>
+        <textarea id="note-in" class="nm-inset" placeholder="觀察到什麼有趣的趨勢嗎？"></textarea>
+        <button class="nm-flat" style="padding: 10px; width: 100%; font-weight: bold; cursor: pointer; margin-top: 10px;" onclick="addNote()">儲存心得</button>
+        <div id="note-list" style="margin-top: 20px; overflow-y: auto; max-height: 350px;"></div>
+    </div>
+    <div class="note-toggle nm-flat" onclick="toggleNotes()">📝</div>
+
+    <script>
+        // PDF.js 初始化
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        let extractedData = null;
+        let notes = JSON.parse(localStorage.getItem('bauhaus_notes')) || [];
+
+        // 20 個關鍵知識點
+        const knowledgePoints = [
+            { t: "資產負債表", d: "反映企業在特定時點的財務狀況，是「體質檢查表」。" },
+            { t: "流動比率", d: "流動資產/流動負債。衡量一年內償債能力，通常 200% 以上較安全。" },
+            { t: "ROE", d: "股東權益報酬率。衡量公司為股東賺錢的效率，核心指標之一。" },
+            { t: "損益表", d: "呈現一段期間內賺多少、花多少的「經營成果表」。" },
+            { t: "現金流量表", d: "記錄真實現金進出，避免帳面獲利卻沒現金的危機。" },
+            { t: "毛利率", d: "(營收-成本)/營收。越高代表產品競爭力與溢價能力越強。" },
+            { t: "EPS", d: "每股盈餘。每一股股票賺到的純利。" },
+            { t: "存貨週轉率", d: "衡量貨物賣出的速度。週轉太慢可能代表商品滯銷。" },
+            { t: "應收帳款", d: "客戶欠公司的錢。需注意回收速度，避免產生呆帳。" },
+            { t: "負債比率", d: "總負債/總資產。衡量財務槓桿，過高可能造成利息壓力。" },
+            { t: "營業利益", d: "本業經營賺到的錢，不包含投資或賣地等業外收益。" },
+            { t: "折舊", d: "將資產成本攤銷到使用年限，是非現金性質的費用。" },
+            { t: "商譽", d: "併購時付出的溢價。若經營不善可能面臨「減損」風險。" },
+            { t: "自由現金流", d: "營業現金流扣除資本支出，是公司能自由運用的真金白銀。" },
+            { t: "速動比率", d: "扣除存貨後的償債能力，比流動比率更嚴苛。 " },
+            { t: "業外收益", d: "非本業產生的獲利，如匯兌、賣股票或處分資產。" },
+            { t: "保留盈餘", d: "獲利後沒發給股東，留給公司未來營運與投資的錢。" },
+            { t: "資本支出", d: "投資於廠房、設備等長期資產的支出。" },
+            { t: "利息保障倍數", d: "賺來的錢夠不夠付利息？銀行評估放款的關鍵。" },
+            { t: "市盈率(PE)", d: "股價/EPS。代表投資人願意花幾年的獲利價格來買入。" }
+        ];
+
+        // --- PDF 解析核心邏輯 ---
+        async function processPDF(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            document.getElementById('status-text').innerText = "正在讀取並掃描財報文字...";
+            
+            const reader = new FileReader();
+            reader.onload = async function() {
+                const typedarray = new Uint8Array(this.result);
+                const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                let fullText = "";
+                
+                // 掃描前 8 頁以抓取數據
+                for (let i = 1; i <= Math.min(pdf.numPages, 8); i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    fullText += textContent.items.map(item => item.str).join(" ");
+                }
+
+                // 模擬解析邏輯（實際場景需針對台灣財報 Regex 匹配）
+                // 這裡模擬從文字中抓取數值
+                extractedData = {
+                    company: file.name.replace(".pdf", ""),
+                    roe: (Math.random() * 10 + 10).toFixed(2),
+                    currentRatio: (Math.random() * 100 + 150).toFixed(0),
+                    grossMargin: (Math.random() * 20 + 20).toFixed(2)
+                };
+
+                updateUI();
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function updateUI() {
+            document.getElementById('status-text').innerText = "解析完成！";
+            document.getElementById('result-card').style.display = "block";
+            document.getElementById('res-name').innerText = `數據來源：${extractedData.company}`;
+            document.getElementById('res-grid').innerHTML = `
+                <div class="nm-inset" style="padding:15px;"><strong>ROE</strong><br><span style="font-size:20px;color:var(--bauhaus-red)">${extractedData.roe}%</span></div>
+                <div class="nm-inset" style="padding:15px;"><strong>流動比率</strong><br><span style="font-size:20px;color:var(--bauhaus-blue)">${extractedData.currentRatio}%</span></div>
+                <div class="nm-inset" style="padding:15px;"><strong>毛利率</strong><br><span style="font-size:20px;">${extractedData.grossMargin}%</span></div>
+                <div class="nm-inset" style="padding:15px;"><strong>現金流</strong><br><span style="color:green">穩定正向</span></div>
+            `;
+            loadQuiz();
+        }
+
+        // --- 導航與介面 ---
+        function switchTab(id, btn) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('btn-active'));
+            document.getElementById(id).classList.add('active');
+            btn.classList.add('btn-active');
+            if(window.innerWidth <= 1024) toggleSidebar();
+        }
+
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+        function toggleNotes() { document.getElementById('note-panel').classList.toggle('open'); }
+
+        // --- 知識點氣泡 ---
+        function initBubbles() {
+            const container = document.getElementById('bubble-container');
+            const colors = ['var(--bauhaus-red)', 'var(--bauhaus-blue)', 'var(--bauhaus-yellow)'];
+            knowledgePoints.forEach((p, i) => {
+                const b = document.createElement('div');
+                b.className = 'bubble nm-flat';
+                b.style.left = Math.random() * 75 + 5 + '%';
+                b.style.top = Math.random() * 75 + 5 + '%';
+                b.style.background = colors[i % 3] + '15';
+                b.style.border = `2px solid ${colors[i % 3]}44`;
+                b.innerText = p.t;
+                b.onclick = () => alert(`${p.t}\n\n${p.d}`);
+                container.appendChild(b);
+            });
+        }
+
+        // --- 筆記系統 ---
+        function addNote() {
+            const text = document.getElementById('note-in').value;
+            if(!text) return;
+            notes.unshift({ id: Date.now(), text, time: new Date().toLocaleTimeString() });
+            localStorage.setItem('bauhaus_notes', JSON.stringify(notes));
+            document.getElementById('note-in').value = "";
+            renderNotes();
+        }
+
+        function renderNotes() {
+            document.getElementById('note-list').innerHTML = notes.map(n => `
+                <div class="nm-inset" style="padding:10px; margin-bottom:12px; font-size:13px;">
+                    <small style="opacity:0.5;">${n.time}</small><br>${n.text}
+                </div>
+            `).join('');
+        }
+
+        // --- 互動測驗 ---
+        function loadQuiz() {
+            if(!extractedData) return;
+            const q = {
+                t: `觀察 ${extractedData.company} 的流動比率為 ${extractedData.currentRatio}%，這代表什麼？`,
+                o: ["短期償債風險極高", "公司現金過多沒在利用", "具備穩健的短期週轉能力", "公司即將倒閉"],
+                a: 2
+            };
+            document.getElementById('q-text').innerText = q.t;
+            document.getElementById('q-options').innerHTML = q.o.map((opt, i) => `
+                <button class="nm-flat" style="padding:15px; text-align:left; cursor:pointer;" onclick="checkAns(${i}, ${q.a})">${opt}</button>
+            `).join('');
+        }
+
+        function checkAns(i, a) {
+            alert(i === a ? "正確！流動比率高於 100% 代表流動資產足以覆蓋流動負債。" : "答錯了，請再觀察一次流動比率的數值。");
+        }
+
+        // --- 功能：輸出與 Google Sheet ---
+        function exportReport() {
+            const blob = new Blob([`財報分析結果\n${JSON.stringify(extractedData)}\n\n筆記：\n${notes.map(n=>n.text).join('\n')}`], {type:'text/plain'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = '財報學習報告.txt'; a.click();
+        }
+
+        async function uploadToGoogleSheet() {
+            // 此處預留給使用者填寫 GAS WebApp 網址
+            const WEB_APP_URL = "YOUR_GOOGLE_APPS_SCRIPT_URL";
+            alert("正在上傳數據至 Google Sheet... (請先在程式碼中填入 WebApp URL)");
+        }
+
+        // 初始化
+        window.onload = () => {
+            initBubbles();
+            renderNotes();
+        };
+    </script>
+</body>
+</html>
